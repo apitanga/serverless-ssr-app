@@ -53,7 +53,7 @@ module "ssr" {
 }
 
 output "app_config" {
-  value = module.ssr.app_config
+  value     = module.ssr.app_config
   sensitive = true
 }
 
@@ -70,41 +70,106 @@ terraform plan
 terraform apply
 ```
 
-### 4. Export Outputs for App
+### 4. Export Configuration for App
 
 ```bash
+# Export to your app directory
+mkdir -p ~/my-app/config
 terraform output -json app_config > ~/my-app/config/infra-outputs.json
+
+# Note the application URL
+terraform output application_url
 ```
 
-### 5. Get CI/CD Credentials (if created)
+### 5. Get CI/CD Credentials (if enabled)
 
 ```bash
 terraform output cicd_aws_access_key_id
 terraform output cicd_aws_secret_access_key  # sensitive
 ```
 
-## Alternative: Using Examples
+Save these for GitHub secrets (see below).
+
+---
+
+## Alternative: Using Module Examples
 
 The module includes pre-built examples:
 
 ```bash
+# Clone module
 git clone https://github.com/apitanga/serverless-ssr-module.git
 cd serverless-ssr-module/examples/basic
-# Edit variables.tf or create terraform.tfvars
+
+# Create terraform.tfvars
+cat > terraform.tfvars << 'EOF'
+project_name = "my-app"
+domain_name  = "example.com"
+subdomain    = "app"
+environment  = "dev"
+enable_dr         = false
+create_ci_cd_user = false
+EOF
+
+# Deploy
 terraform init
 terraform apply
+
+# Export config
+cd -
+terraform output -json app_config > ~/my-app/config/infra-outputs.json
 ```
+
+---
 
 ## Required GitHub Secrets
 
 Add these to your app repository (`serverless-ssr-app`):
 
-| Secret | Value |
-|--------|-------|
-| `AWS_ACCESS_KEY_ID` | From `cicd_aws_access_key_id` output |
-| `AWS_SECRET_ACCESS_KEY` | From `cicd_aws_secret_access_key` output |
-| `AWS_PRIMARY_REGION` | e.g., `us-east-1` |
-| `INFRA_OUTPUTS_JSON` | Contents of `infra-outputs.json` |
+| Secret | Value | Source |
+|--------|-------|--------|
+| `AWS_ACCESS_KEY_ID` | CI/CD access key | `terraform output cicd_aws_access_key_id` |
+| `AWS_SECRET_ACCESS_KEY` | CI/CD secret | `terraform output cicd_aws_secret_access_key` |
+| `AWS_PRIMARY_REGION` | AWS region | e.g., `us-east-1` |
+| `INFRA_OUTPUTS_JSON` | Full config | Contents of `config/infra-outputs.json` |
+
+### How to Add Secrets
+
+1. Go to GitHub → Your repo → Settings → Secrets and variables → Actions
+2. Click "New repository secret"
+3. Add each secret from the table above
+
+For `INFRA_OUTPUTS_JSON`, copy the entire contents of `config/infra-outputs.json`.
+
+---
+
+## Understanding the File Structure
+
+After setup, you'll have two directories:
+
+```
+~/my-app-infrastructure/         # Infrastructure (Terraform)
+├── main.tf
+├── .terraform/
+└── terraform.tfstate
+
+~/my-app/                        # Application (this template)
+├── app/                         # Nuxt app (package.json here!)
+│   ├── package.json
+│   └── ...
+├── config/
+│   └── infra-outputs.json      # Copied from terraform
+├── scripts/
+│   └── deploy.sh               # Run from root
+└── ...
+```
+
+**Important**: 
+- Terraform runs in `~/my-app-infrastructure/`
+- The deploy script (`./scripts/deploy.sh`) runs from `~/my-app/` (root of app repo)
+- `npm install` runs inside `~/my-app/app/` (where package.json lives)
+
+---
 
 ## Infrastructure Resources Created
 
@@ -114,6 +179,8 @@ Add these to your app repository (`serverless-ssr-app`):
 - **DynamoDB**: Global table for data persistence
 - **IAM Roles**: Execution role + optional CI/CD user
 
+---
+
 ## Module Documentation
 
 For full module documentation, see:
@@ -121,6 +188,8 @@ For full module documentation, see:
 - [Basic Example](https://github.com/apitanga/serverless-ssr-module/tree/main/examples/basic)
 - [Complete Example](https://github.com/apitanga/serverless-ssr-module/tree/main/examples/complete)
 
+---
+
 ## Next Steps
 
-See [Deployment Guide](deployment.md) for application deployment.
+See [Deployment Guide](deployment.md) for application deployment instructions.
