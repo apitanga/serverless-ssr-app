@@ -5,12 +5,48 @@ set -e
 
 CONFIG_FILE="${INFRA_CONFIG:-config/infra-outputs.json}"
 
+# Check dependencies
+echo "🔍 Checking dependencies..."
+MISSING_DEPS=()
+
+if ! command -v zip &> /dev/null; then
+  MISSING_DEPS+=("zip")
+fi
+
+if ! command -v aws &> /dev/null; then
+  MISSING_DEPS+=("aws-cli")
+fi
+
+if ! command -v jq &> /dev/null; then
+  MISSING_DEPS+=("jq")
+fi
+
+if [ ${#MISSING_DEPS[@]} -ne 0 ]; then
+  echo "❌ Missing required dependencies: ${MISSING_DEPS[*]}"
+  echo ""
+  echo "Please install:"
+  for dep in "${MISSING_DEPS[@]}"; do
+    case $dep in
+      zip)
+        echo "  - zip: sudo apt install zip  # or: brew install zip"
+        ;;
+      aws-cli)
+        echo "  - aws-cli: https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html"
+        ;;
+      jq)
+        echo "  - jq: sudo apt install jq  # or: brew install jq"
+        ;;
+    esac
+  done
+  exit 1
+fi
+
 # Verify config exists
 if [ ! -f "$CONFIG_FILE" ]; then
   echo "❌ Infrastructure config not found: $CONFIG_FILE"
   echo ""
   echo "Setup required:"
-  echo "  1. Deploy infrastructure from serverless-ssr-infra"
+  1. Deploy infrastructure from serverless-ssr-module"
   echo "  2. Run: terraform output -json > $CONFIG_FILE"
   exit 1
 fi
@@ -56,6 +92,7 @@ aws lambda update-function-code \
   --function-name "$LAMBDA_PRIMARY" \
   --s3-bucket "$S3_BUCKET_PRIMARY" \
   --s3-key lambda/function.zip \
+  --region "$PRIMARY_REGION" \
   --publish
 
 if [ -n "$LAMBDA_DR" ] && [ "$LAMBDA_DR" != "null" ]; then
