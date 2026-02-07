@@ -2,40 +2,136 @@
 
 A Nuxt.js application template for serverless SSR deployment on AWS Lambda + CloudFront.
 
-## Features
+This is the **application template** that works with the [serverless-ssr-module](https://github.com/apitanga/serverless-ssr-module) infrastructure.
 
-- **Server-Side Rendering (SSR)** with Nuxt 3
-- **API Routes** with Nitro engine
-- **Multi-region deployment** support
-- **DynamoDB integration** for data persistence
-- **Static asset optimization** via CloudFront
-- **Health checks** and monitoring endpoints
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Your Application                          │
+│              (This Repo - serverless-ssr-app)                │
+├─────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │
+│  │    Pages     │  │  API Routes  │  │  Static Assets   │   │
+│  │  (Vue/Nuxt)  │  │   (Nitro)    │  │   (S3/CloudFront)│   │
+│  └──────┬───────┘  └──────┬───────┘  └──────────────────┘   │
+└─────────┼─────────────────┼──────────────────────────────────┘
+          │                 │
+          ▼                 ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Infrastructure (Separate Repo)                  │
+│       (serverless-ssr-module - AWS Resources)                │
+├─────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │
+│  │    Lambda    │  │  CloudFront  │  │     DynamoDB     │   │
+│  │  (SSR/App)   │  │    (CDN)     │  │   (Data Store)   │   │
+│  └──────────────┘  └──────────────┘  └──────────────────┘   │
+└─────────────────────────────────────────────────────────────┘
+```
 
 ## Quick Start
 
-### Prerequisites
-
-1. **Infrastructure deployed** from [serverless-ssr-infra](https://github.com/apitanga/serverless-ssr-pattern/tree/modularize-infra)
-2. AWS CLI configured with credentials
-3. Node.js 20+
-
-### Setup
+### 1. Deploy Infrastructure First
 
 ```bash
-# 1. Clone this template
+# Create infrastructure directory
+mkdir ~/my-app-infra && cd ~/my-app-infra
+
+# Create main.tf
+cat > main.tf << 'EOF'
+provider "aws" {
+  alias  = "primary"
+  region = "us-east-1"
+}
+
+provider "aws" {
+  alias  = "dr"
+  region = "us-west-2"
+}
+
+module "ssr" {
+  source = "github.com/apitanga/serverless-ssr-module"
+  
+  providers = {
+    aws.primary = aws.primary
+    aws.dr      = aws.dr
+  }
+  
+  project_name = "my-app"
+  domain_name  = "example.com"
+  subdomain    = "app"
+}
+EOF
+
+# Deploy
+terraform init
+terraform apply
+
+# Export config for app
+terraform output -json app_config > ~/my-app/config/infra-outputs.json
+```
+
+See [Infrastructure Setup](docs/infrastructure-setup.md) for details.
+
+### 2. Clone and Configure App
+
+```bash
+# Clone this template
 git clone https://github.com/apitanga/serverless-ssr-app.git my-app
 cd my-app
 
-# 2. Install dependencies
+# Copy infrastructure config
+cp ~/my-app-inffra/infra-outputs.json config/
+
+# Install dependencies
 npm install
+```
 
-# 3. Copy infrastructure outputs
-# From your infra deployment directory:
-terraform output -json > ~/my-app/config/infra-outputs.json
+### 3. Deploy Application
 
-# 4. Deploy
+```bash
 ./scripts/deploy.sh
 ```
+
+## Project Structure
+
+```
+.
+├── app/                          # Nuxt application
+│   ├── assets/                   # Static assets (CSS, images)
+│   ├── components/               # Vue components
+│   ├── layouts/                  # Vue layouts
+│   ├── pages/                    # File-based routing
+│   │   ├── index.vue             # Homepage with SSR
+│   │   └── about.vue             # About page
+│   ├── server/
+│   │   └── api/                  # API routes
+│   │       ├── health.get.ts     # Health check endpoint
+│   │       ├── counter.post.ts   # Visit counter (DynamoDB)
+│   │       ├── dashboard.get.ts  # Dashboard data
+│   │       └── weather.get.ts    # Weather demo API
+│   ├── nuxt.config.ts            # Nuxt configuration
+│   └── package.json              # Dependencies
+├── config/
+│   └── infra-outputs.json        # Terraform outputs (gitignored)
+├── scripts/
+│   └── deploy.sh                 # Deployment script
+├── .github/workflows/
+│   ├── ci.yml                    # PR checks
+│   └── deploy.yml                # Deploy to AWS
+└── docs/
+    ├── infrastructure-setup.md   # How to set up infra
+    └── deployment.md             # Deployment guide
+```
+
+## API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/health` | GET | Health check for monitoring |
+| `/api/counter` | POST | Increment visit counter in DynamoDB |
+| `/api/dashboard` | GET | Get dashboard data |
+| `/api/weather` | GET | Sample weather API (external) |
 
 ## Development
 
@@ -48,51 +144,18 @@ npm run build
 
 # Build for AWS Lambda
 npm run build:lambda
+
+# Preview production build
+npm run preview
 ```
-
-## Project Structure
-
-```
-.
-├── app/
-│   ├── assets/            # Static assets (CSS, images)
-│   ├── layouts/           # Vue layouts
-│   ├── pages/             # Vue pages (file-based routing)
-│   │   ├── index.vue      # Homepage with SSR counter
-│   │   └── about.vue      # About page
-│   ├── server/
-│   │   └── api/           # API routes
-│   │       ├── health.get.ts     # Health check endpoint
-│   │       ├── counter.post.ts   # Visit counter API
-│   │       ├── dashboard.get.ts  # Dashboard data
-│   │       └── weather.get.ts    # Weather demo API
-│   ├── nuxt.config.ts     # Nuxt configuration
-│   └── package.json       # Dependencies
-├── config/
-│   └── infra-outputs.json # Terraform outputs (gitignored)
-├── scripts/
-│   └── deploy.sh          # Deployment script
-└── .github/workflows/
-    ├── ci.yml             # PR checks
-    └── deploy.yml         # Deploy to AWS
-```
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/health` | GET | Health check |
-| `/api/counter` | POST | Increment visit counter |
-| `/api/dashboard` | GET | Get dashboard data |
-| `/api/weather` | GET | Sample weather API |
 
 ## Deployment
 
 ### Local Deployment
 
 ```bash
-# Ensure AWS credentials are set
-export AWS_PROFILE=pitanga
+# Ensure AWS credentials are configured
+export AWS_PROFILE=your-profile
 
 # Run deployment
 ./scripts/deploy.sh
@@ -100,27 +163,35 @@ export AWS_PROFILE=pitanga
 
 ### CI/CD (GitHub Actions)
 
-1. Add GitHub secrets:
+1. Add GitHub secrets (see [Infrastructure Setup](docs/infrastructure-setup.md)):
    - `AWS_ACCESS_KEY_ID`
    - `AWS_SECRET_ACCESS_KEY`
    - `AWS_PRIMARY_REGION`
-   - `INFRA_OUTPUTS_JSON` (contents of `infra-outputs.json`)
+   - `INFRA_OUTPUTS_JSON`
 
 2. Push to `main` branch triggers automatic deployment
 
 ## Configuration
 
-The app reads infrastructure configuration from `config/infra-outputs.json`. This file is generated by Terraform and contains:
+The app reads infrastructure configuration from `config/infra-outputs.json`. This file is generated by the [serverless-ssr-module](https://github.com/apitanga/serverless-ssr-module) and contains:
 
-- Lambda function names
-- S3 bucket names
-- CloudFront distribution ID
+- Lambda function names and ARNs
+- S3 bucket names for deployments and static assets
+- CloudFront distribution ID for cache invalidation
 - DynamoDB table name
+- Application URL
+
+## Related Repositories
+
+| Repository | Purpose |
+|------------|---------|
+| [serverless-ssr-module](https://github.com/apitanga/serverless-ssr-module) | Terraform module for AWS infrastructure |
+| [serverless-ssr-pattern](https://github.com/apitanga/serverless-ssr-pattern) | Original project (archived/inspiration) |
 
 ## Documentation
 
-- [Infrastructure Setup](docs/infrastructure-setup.md)
-- [Deployment Guide](docs/deployment.md)
+- [Infrastructure Setup](docs/infrastructure-setup.md) - Deploy the infrastructure
+- [Deployment Guide](docs/deployment.md) - Deploy application updates
 
 ## License
 
