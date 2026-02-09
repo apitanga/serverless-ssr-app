@@ -224,6 +224,100 @@ terraform apply  # Applies via TFC (requires auth)
 
 ---
 
+## Infrastructure-to-Application Config Flow
+
+### How Infrastructure Config Reaches the App
+
+The application needs to know infrastructure details (DynamoDB table name, regions, etc.) to function correctly. Here's how that configuration flows:
+
+**1. Terraform Outputs** → **2. Build-Time Environment Variables** → **3. Baked into App**
+
+#### 1. Terraform Creates Resources
+```hcl
+# Infrastructure creates DynamoDB table
+resource "aws_dynamodb_table" "visits" {
+  name = "${var.project_name}-visits"  # e.g., "pomo-ssr-visits"
+}
+```
+
+#### 2. Terraform Outputs Config
+```hcl
+# Module outputs app_config with all necessary details
+output "app_config" {
+  value = {
+    dynamodb = { table_name = aws_dynamodb_table.visits.name }
+    primary_region = var.primary_region
+    dr_region = var.dr_region
+    # ... more config
+  }
+}
+```
+
+#### 3. Deploy Script Exports as Environment Variables
+
+**Key Pattern**: Before building the app, the deploy script reads Terraform outputs and exports them:
+
+```bash
+# In scripts/deploy.sh
+DYNAMODB_TABLE=$(jq -r '.app_config.value.dynamodb.table_name' "$CONFIG_FILE")
+PRIMARY_REGION=$(jq -r '.app_config.value.primary_region' "$CONFIG_FILE")
+DR_REGION=$(jq -r '.app_config.value.dr_region' "$CONFIG_FILE")
+
+# Export before building
+export DYNAMODB_TABLE="$DYNAMODB_TABLE"
+export PRIMARY_REGION="$PRIMARY_REGION"
+export DR_REGION="$DR_REGION"
+
+npm run build  # Nuxt reads process.env during build
+```
+
+#### 4. Nuxt Bakes Values at Build Time
+
+```typescript
+// app/nuxt.config.ts
+runtimeConfig: {
+  dynamodbTable: process.env.DYNAMODB_TABLE || 'pomo-ssr-visits',
+  primaryRegion: process.env.PRIMARY_REGION || 'us-east-1',
+  drRegion: process.env.DR_REGION || 'us-west-2',
+}
+```
+
+**Important**: Nuxt's `process.env` reads happen at **build time**, not Lambda runtime. The fallback values are only used if the environment variables aren't set during build.
+
+#### 5. Lambda Also Gets Environment Variables (Backup)
+
+Terraform also sets these as Lambda environment variables:
+```hcl
+environment {
+  variables = {
+    DYNAMODB_TABLE = aws_dynamodb_table.visits.name
+    PRIMARY_REGION = var.primary_region
+    DR_REGION      = var.dr_region
+  }
+}
+```
+
+### Why This Matters
+
+❌ **Without exporting during build**: App uses hardcoded fallback values (can break if table name changes)
+
+✅ **With exporting during build**: App uses correct values from Terraform (always in sync)
+
+### Workflow Comparison
+
+**Local deployment** (`./scripts/deploy.sh`):
+1. Reads `config/infra-outputs.json`
+2. Exports env vars
+3. Builds app with correct values
+4. Deploys to AWS
+
+**GitHub Actions** (`.github/workflows/deploy.yml`):
+1. Writes `INFRA_OUTPUTS_JSON` variable to `config/infra-outputs.json`
+2. Runs `./scripts/deploy.sh` (same as local)
+3. Deploy script handles everything
+
+---
+
 ## Security
 
 ### No Static Credentials!
