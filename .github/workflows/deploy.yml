@@ -6,7 +6,6 @@ on:
     paths:
       - 'app/**'
       - 'scripts/**'
-      - '.github/workflows/deploy.yml'
   workflow_dispatch:
     inputs:
       environment:
@@ -17,36 +16,41 @@ on:
         options:
           - production
 
+# Required for OIDC authentication
+permissions:
+  id-token: write
+  contents: read
+
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # Check if secrets are configured
+  # Check if configuration is ready
   check-config:
     name: Check Configuration
     runs-on: ubuntu-latest
     outputs:
-      has_secrets: ${{ steps.check.outputs.has_secrets }}
+      has_role: ${{ steps.check.outputs.has_role }}
       has_config: ${{ steps.check.outputs.has_config }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Check for AWS credentials
+      - name: Check for OIDC role
         id: check
         run: |
-          # Check AWS secrets
-          if [ -n "${{ secrets.AWS_ACCESS_KEY_ID }}" ]; then
-            echo "has_secrets=true" >> $GITHUB_OUTPUT
-            echo "✅ AWS secrets found"
+          # Check OIDC role ARN
+          if [ -n "${{ secrets.AWS_ROLE_ARN }}" ]; then
+            echo "has_role=true" >> $GITHUB_OUTPUT
+            echo "✅ AWS OIDC role configured"
           else
-            echo "has_secrets=false" >> $GITHUB_OUTPUT
-            echo "⚠️ AWS secrets not configured"
+            echo "has_role=false" >> $GITHUB_OUTPUT
+            echo "⚠️ AWS OIDC role not configured"
           fi
-          
-          # Check if INFRA_OUTPUTS_JSON secret exists
-          if [ -n "${{ secrets.INFRA_OUTPUTS_JSON }}" ]; then
+
+          # Check if INFRA_OUTPUTS_JSON variable exists
+          if [ -n "${{ vars.INFRA_OUTPUTS_JSON }}" ]; then
             echo "has_config=true" >> $GITHUB_OUTPUT
             echo "✅ Infrastructure config found"
           else
@@ -59,9 +63,9 @@ jobs:
     name: Deploy to AWS
     runs-on: ubuntu-latest
     needs: check-config
-    if: needs.check-config.outputs.has_secrets == 'true' && needs.check-config.outputs.has_config == 'true'
+    if: needs.check-config.outputs.has_role == 'true' && needs.check-config.outputs.has_config == 'true'
     environment: production
-    
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -73,12 +77,17 @@ jobs:
           cache: 'npm'
           cache-dependency-path: app/package.json
 
-      - name: Configure AWS Credentials
+      - name: Configure AWS Credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_PRIMARY_REGION }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+          role-session-name: GitHubActions-${{ github.run_id }}
+
+      - name: Verify AWS identity
+        run: |
+          echo "Authenticated as:"
+          aws sts get-caller-identity
 
       - name: Install dependencies
         working-directory: app
@@ -88,7 +97,7 @@ jobs:
         env:
           INFRA_CONFIG: ${{ github.workspace }}/config/infra-outputs.json
         run: |
-          echo '${{ secrets.INFRA_OUTPUTS_JSON }}' > "$INFRA_CONFIG"
+          echo '${{ vars.INFRA_OUTPUTS_JSON }}' > "$INFRA_CONFIG"
           echo "✅ Infrastructure config written"
 
       - name: Deploy
@@ -99,7 +108,7 @@ jobs:
       - name: Get Application URL
         id: get-url
         run: |
-          URL=$(echo '${{ secrets.INFRA_OUTPUTS_JSON }}' | jq -r '.application_url.value // .application_url')
+          URL=$(echo '${{ vars.INFRA_OUTPUTS_JSON }}' | jq -r '.application_url.value // .application_url')
           echo "url=$URL" >> $GITHUB_OUTPUT
           echo "🌐 Application URL: $URL"
 
@@ -107,10 +116,10 @@ jobs:
         run: |
           echo "Waiting for deployment to propagate..."
           sleep 15
-          
+
           URL="${{ steps.get-url.outputs.url }}/api/health"
           echo "Testing: $URL"
-          
+
           # Try up to 3 times
           for i in 1 2 3; do
             if curl -sf "$URL" > /dev/null; then
@@ -120,7 +129,7 @@ jobs:
             echo "Attempt $i failed, retrying..."
             sleep 10
           done
-          
+
           echo "❌ Smoke test failed"
           exit 1
 
@@ -134,16 +143,14 @@ jobs:
     name: Notify Skipped
     runs-on: ubuntu-latest
     needs: check-config
-    if: needs.check-config.outputs.has_secrets != 'true' || needs.check-config.outputs.has_config != 'true'
+    if: needs.check-config.outputs.has_role != 'true' || needs.check-config.outputs.has_config != 'true'
     steps:
       - name: Provide setup instructions
         run: |
           echo "::warning::Deployment skipped - configuration incomplete"
           echo ""
-          echo "To enable deployment, add these GitHub secrets:"
-          echo "  1. AWS_ACCESS_KEY_ID"
-          echo "  2. AWS_SECRET_ACCESS_KEY"
-          echo "  3. AWS_PRIMARY_REGION (e.g., us-east-1)"
-          echo "  4. INFRA_OUTPUTS_JSON (from terraform output)"
+          echo "To enable deployment, configure:"
+          echo "  1. GitHub Secret: AWS_ROLE_ARN (IAM role for OIDC)"
+          echo "  2. GitHub Variable: INFRA_OUTPUTS_JSON (from terraform output)"
           echo ""
           echo "See docs/infrastructure-setup.md for detailed instructions."
