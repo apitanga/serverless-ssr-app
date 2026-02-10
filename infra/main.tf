@@ -3,7 +3,7 @@
 # Terraform Cloud Workspace: pomossr
 
 module "ssr" {
-  source = "github.com/apitanga/serverless-ssr-module?ref=v2.0.0"
+  source = "github.com/apitanga/serverless-ssr-module?ref=v2.1.0"
 
   providers = {
     aws.primary = aws.primary
