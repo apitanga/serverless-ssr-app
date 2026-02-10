@@ -1,12 +1,10 @@
 name: Sync Infrastructure Config
 
 on:
-  # Manual trigger only until TF_API_TOKEN secret is added to this repo.
-  # Once added, restore the push trigger:
-  #   push:
-  #     branches: [main]
-  #     paths: ['infra/**/*.tf', 'infra/**/*.tfvars']
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['infra/**/*.tf', 'infra/**/*.tfvars']
 
 permissions:
   contents: write  # Required to commit infra outputs file
