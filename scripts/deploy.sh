@@ -56,7 +56,7 @@ echo "📋 Loading configuration from $CONFIG_FILE"
 PROJECT_NAME=$(jq -r '.app_config.value.project_name' "$CONFIG_FILE")
 PRIMARY_REGION=$(jq -r '.app_config.value.primary_region' "$CONFIG_FILE")
 DR_REGION=$(jq -r '.app_config.value.dr_region' "$CONFIG_FILE")
-DYNAMODB_TABLE=$(jq -r '.app_config.value.dynamodb.table_name' "$CONFIG_FILE")
+DYNAMODB_TABLE=$(jq -r '.app_config.value.dynamodb.table_name // "'"$PROJECT_NAME"'-visits"' "$CONFIG_FILE")
 LAMBDA_PRIMARY=$(jq -r '.app_config.value.lambda.primary.function_name' "$CONFIG_FILE")
 LAMBDA_DR=$(jq -r '.app_config.value.lambda.dr.function_name' "$CONFIG_FILE")
 S3_BUCKET_PRIMARY=$(jq -r '.app_config.value.lambda.primary.s3_bucket' "$CONFIG_FILE")
@@ -126,5 +126,4 @@ aws cloudfront create-invalidation \
   --paths "/_nuxt/*" "/favicon.ico" "/*.html"
 
 echo "✅ Deployment complete!"
-APP_URL=$(jq -r '.application_url.value' "$CONFIG_FILE")
-echo "   URL: $APP_URL"
+echo "   URL: $(jq -r '.application_url.value' "../$CONFIG_FILE")"
