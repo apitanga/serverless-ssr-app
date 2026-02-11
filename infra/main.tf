@@ -1,7 +1,6 @@
-# ============================================================
-# Serverless SSR App — Infrastructure
-# Replace placeholder values below before first apply.
-# ============================================================
+# Pomo SSR Demo Site Infrastructure
+# Demo site at ssr.pomo.dev
+# Terraform Cloud Workspace: pomossr
 
 module "ssr" {
   source = "github.com/apitanga/serverless-ssr-module?ref=v2.2.0"
@@ -11,34 +10,17 @@ module "ssr" {
     aws.dr      = aws.dr
   }
 
-  # ── Required ──────────────────────────────────────────────
-  project_name = "my-project" # e.g. "acme-web"
+  project_name    = "pomo-ssr"
+  domain_name     = "pomo.dev"
+  subdomain       = "ssr" # Creates ssr.pomo.dev
+  route53_managed = true  # Zone exists in pomo repo
 
-  # ── Domain (choose one scenario) ──────────────────────────
-  # Scenario A: No custom domain (CloudFront URL only)
-  # domain_name = null
-
-  # Scenario B: Domain managed in Route53
-  # domain_name     = "example.com"
-  # route53_managed = true
-
-  # Scenario C: External domain (manual DNS)
-  # domain_name     = "example.com"
-  # route53_managed = false
-
-  domain_name     = null
-  route53_managed = false
-
-  # ── Optional ──────────────────────────────────────────────
-  # subdomain       = "app"     # Creates app.example.com
-  # enable_dynamo   = false     # Disable visit counter
-  # enable_dr       = false     # Disable multi-region DR
-
-  # Use GitHub Actions OIDC for deployments (no static IAM user)
+  # Disable CICD user - we use GitHub Actions OIDC instead
   create_ci_cd_user = false
 
   tags = {
-    Project   = "my-project"
+    Project   = "pomo-ssr"
+    Purpose   = "demo"
     ManagedBy = "terraform"
   }
 }
