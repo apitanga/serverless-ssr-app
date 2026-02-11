@@ -10,11 +10,13 @@ terraform {
     }
   }
 
-  # Store state in Terraform Cloud
+  # Store state in Terraform Cloud.
+  # When forking: update organization and workspace name.
+  # Keep this block — the sync workflow reads outputs via terraform output -json.
   cloud {
-    organization = "Pitangaville"
+    organization = "Pitangaville" # ← your TFC organization
     workspaces {
-      name = "pomossr"
+      name = "pomossr" # ← your TFC workspace name
     }
   }
 }

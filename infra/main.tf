@@ -1,6 +1,6 @@
-# Pomo SSR Demo Site Infrastructure
-# Demo site at ssr.pomo.dev
-# Terraform Cloud Workspace: pomossr
+# Pomo SSR — Live demo at ssr.pomo.dev
+# Also serves as the reference template for new SSR projects.
+# When forking, replace values marked ← with your own.
 
 module "ssr" {
   source = "github.com/apitanga/serverless-ssr-module?ref=v2.2.0"
@@ -10,17 +10,25 @@ module "ssr" {
     aws.dr      = aws.dr
   }
 
-  project_name    = "pomo-ssr"
-  domain_name     = "pomo.dev"
-  subdomain       = "ssr" # Creates ssr.pomo.dev
-  route53_managed = true  # Zone exists in pomo repo
+  project_name = "pomo-ssr" # ← your project name, e.g. "acme-web"
 
-  # Disable CICD user - we use GitHub Actions OIDC instead
+  # Domain — choose one scenario:
+  #   A) No custom domain:  domain_name = null, route53_managed = false
+  #   B) Route53-managed:   domain_name = "example.com", route53_managed = true
+  #   C) External DNS:      domain_name = "example.com", route53_managed = false
+  domain_name     = "pomo.dev" # ← your root domain (or null)
+  subdomain       = "ssr"      # ← your subdomain (omit for root domain)
+  route53_managed = true       # ← true if zone is in Route53
+
+  # Optional — disable features you don't need:
+  # enable_dynamo   = false         # removes visit counter DynamoDB table
+  # enable_dr       = false         # removes DR Lambda + S3 in us-west-2
+
+  # Use GitHub Actions OIDC for deployments — no static IAM user needed
   create_ci_cd_user = false
 
   tags = {
-    Project   = "pomo-ssr"
-    Purpose   = "demo"
+    Project   = "pomo-ssr" # ← your project name
     ManagedBy = "terraform"
   }
 }
